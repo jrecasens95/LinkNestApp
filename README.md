@@ -226,4 +226,4 @@ Deletes a link.
 
 ## License
 
-License to be decided.
+MIT. See [LICENSE](LICENSE).
