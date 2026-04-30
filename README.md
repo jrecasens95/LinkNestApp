@@ -2,17 +2,16 @@
 
 LinkNest is a private, self-hosted URL shortener for personal use, teams, newsrooms, events, and campaigns.
 
-This repository is planned as a full-stack open-source project, but the current phase contains only the backend MVP.
-
 ## Stack
 
 - Backend: Go + Fiber
 - ORM: GORM
 - Database: PostgreSQL
+- Frontend: React + Vite + Tailwind
 - Deployment: Docker Compose
-- Frontend and auth: planned for later phases
+- Auth: planned for later phases
 
-## Backend MVP
+## MVP
 
 Current features:
 
@@ -25,11 +24,14 @@ Current features:
 - 6-character unique short codes
 - Basic CORS
 - Simple request logs
+- Responsive SaaS-style landing page
+- Form to create short links
+- Copy button for generated short URLs
 
 ## Project Structure
 
 ```text
-backend/
+apps/api/
   cmd/server/main.go
   internal/config/
   internal/database/
@@ -41,6 +43,14 @@ backend/
   Dockerfile
   go.mod
   go.sum
+apps/web/
+  src/
+    api/
+    components/
+    pages/
+    App.tsx
+    main.tsx
+  .env.example
 docker-compose.yml
 ```
 
@@ -48,6 +58,12 @@ docker-compose.yml
 
 ```bash
 docker compose up --build
+```
+
+The web app will be available at:
+
+```text
+http://localhost:3000
 ```
 
 The API will be available at:
@@ -92,26 +108,48 @@ docker compose up postgres
 Configure the backend:
 
 ```bash
-cp backend/.env.example backend/.env
+cp apps/api/.env.example apps/api/.env
 ```
 
 Run the API:
 
 ```bash
-cd backend
+cd apps/api
 go mod tidy
 go run ./cmd/server
 ```
 
+## Run Frontend Locally
+
+Configure the frontend:
+
+```bash
+cp apps/web/.env.example apps/web/.env
+```
+
+Run the web app:
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
 ## Environment Variables
 
-The backend reads these values from environment variables or `backend/.env`:
+The backend reads these values from environment variables or `apps/api/.env`:
 
 | Name | Description | Example |
 | --- | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string | `postgres://linknest:linknest@localhost:5432/linknest?sslmode=disable` |
 | `BASE_URL` | Public base URL used to build short URLs | `http://localhost:4000` |
 | `PORT` | API port | `4000` |
+
+The frontend reads this value from `apps/web/.env`:
+
+| Name | Description | Example |
+| --- | --- | --- |
+| `VITE_API_URL` | Backend API URL | `http://localhost:4000` |
 
 ## API
 
