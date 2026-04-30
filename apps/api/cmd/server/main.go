@@ -39,6 +39,7 @@ func main() {
 	app.Get("/api/links", linkHandler.List)
 	app.Post("/api/links", linkHandler.Create)
 	app.Get("/api/links/:id", linkHandler.Get)
+	app.Get("/api/links/:id/stats", linkHandler.Stats)
 	app.Patch("/api/links/:id", linkHandler.Update)
 	app.Delete("/api/links/:id", linkHandler.Delete)
 	app.Get("/:code", linkHandler.Redirect)

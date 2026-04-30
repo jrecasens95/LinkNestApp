@@ -31,6 +31,25 @@ export type UpdateLinkPayload = {
   is_active?: boolean;
 };
 
+export type ClickEvent = {
+  id: number;
+  user_agent: string;
+  referer: string;
+  ip_address: string;
+  created_at: string;
+};
+
+export type RefererStat = {
+  referer: string;
+  count: number;
+};
+
+export type LinkStats = {
+  total_clicks: number;
+  recent_clicks: ClickEvent[];
+  referers: RefererStat[];
+};
+
 type APIErrorResponse = {
   error?: string;
 };
@@ -111,4 +130,14 @@ export async function deleteLink(id: number): Promise<void> {
   if (!response.ok) {
     throw await parseAPIError(response, "Could not delete this link.");
   }
+}
+
+export async function getLinkStats(id: string): Promise<LinkStats> {
+  const response = await fetch(`${API_URL}/api/links/${id}/stats`);
+
+  if (!response.ok) {
+    throw await parseAPIError(response, "Could not load link stats.");
+  }
+
+  return response.json() as Promise<LinkStats>;
 }
