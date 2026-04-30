@@ -3,17 +3,44 @@ package main
 import (
 	"log"
 
-	"link-nest/internal/platform/config"
-	"link-nest/internal/server"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/jrecasens95/link-nest/backend/internal/config"
+	"github.com/jrecasens95/link-nest/backend/internal/database"
+	"github.com/jrecasens95/link-nest/backend/internal/handlers"
+	"github.com/jrecasens95/link-nest/backend/internal/services"
 )
 
 func main() {
-	config.Load()
+	cfg := config.Load()
 
-	app, err := server.New()
+	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("failed to bootstrap server: %v", err)
+		log.Fatalf("database connection failed: %v", err)
 	}
 
-	log.Fatal(app.Listen(":" + config.Current.Port))
+	if err := database.AutoMigrate(db); err != nil {
+		log.Fatalf("database migration failed: %v", err)
+	}
+
+	app := fiber.New(fiber.Config{
+		AppName:      "LinkNest API",
+		ServerHeader: "LinkNest",
+	})
+
+	app.Use(logger.New())
+	app.Use(cors.New())
+
+	linkService := services.NewLinkService(db)
+	linkHandler := handlers.NewLinkHandler(cfg.BaseURL, linkService)
+
+	app.Get("/api/health", handlers.Health)
+	app.Post("/api/links", linkHandler.Create)
+	app.Get("/:code", linkHandler.Redirect)
+
+	log.Printf("LinkNest API listening on port %s", cfg.Port)
+	if err := app.Listen(":" + cfg.Port); err != nil {
+		log.Fatalf("server stopped: %v", err)
+	}
 }

@@ -1,11 +1,19 @@
 FROM golang:1.23-alpine AS builder
+
 WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
 COPY . .
-RUN go mod tidy
-RUN go build -o server ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -o /linknest ./cmd/server
 
 FROM alpine:3.20
+
 WORKDIR /app
-COPY --from=builder /app/server ./server
+
+COPY --from=builder /linknest /usr/local/bin/linknest
+
 EXPOSE 4000
-CMD ["./server"]
+
+CMD ["linknest"]
