@@ -18,6 +18,10 @@ Current features:
 - PostgreSQL connection through GORM
 - `ShortLink` model with automatic migration
 - `POST /api/links` to create short links
+- `GET /api/links` to list links
+- `GET /api/links/:id` to inspect one link
+- `PATCH /api/links/:id` to edit title or activation status
+- `DELETE /api/links/:id` to remove a link
 - `GET /:code` to redirect short links
 - `GET /api/health` health endpoint
 - URL validation for `http://` and `https://`
@@ -27,6 +31,8 @@ Current features:
 - Responsive SaaS-style landing page
 - Form to create short links
 - Copy button for generated short URLs
+- Private dashboard without auth for single-instance administration
+- Link detail page with title editing, active/inactive toggle, clicks, and delete
 
 ## Project Structure
 
@@ -65,6 +71,12 @@ The web app will be available at:
 ```text
 http://localhost:3000
 ```
+
+Frontend routes:
+
+- `/` creates a new short link.
+- `/dashboard` lists all links.
+- `/dashboard/links/:id` opens the link detail page.
 
 The API will be available at:
 
@@ -188,6 +200,29 @@ Responses:
 - `302` when the link is valid.
 - `404` when the link does not exist.
 - `410` when the link is inactive or expired.
+
+### `GET /api/links`
+
+Lists all links ordered by newest first.
+
+### `GET /api/links/:id`
+
+Returns one link by internal ID.
+
+### `PATCH /api/links/:id`
+
+Updates editable fields:
+
+```json
+{
+  "title": "Updated title",
+  "is_active": true
+}
+```
+
+### `DELETE /api/links/:id`
+
+Deletes a link.
 
 ## License
 

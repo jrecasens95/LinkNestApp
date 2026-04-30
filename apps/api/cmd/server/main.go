@@ -36,7 +36,11 @@ func main() {
 	linkHandler := handlers.NewLinkHandler(cfg.BaseURL, linkService)
 
 	app.Get("/api/health", handlers.Health)
+	app.Get("/api/links", linkHandler.List)
 	app.Post("/api/links", linkHandler.Create)
+	app.Get("/api/links/:id", linkHandler.Get)
+	app.Patch("/api/links/:id", linkHandler.Update)
+	app.Delete("/api/links/:id", linkHandler.Delete)
 	app.Get("/:code", linkHandler.Redirect)
 
 	log.Printf("LinkNest API listening on port %s", cfg.Port)
