@@ -1,0 +1,12 @@
+{
+  "name": "link-nest",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev:web": "npm run dev --prefix apps/web",
+    "build:web": "npm run build --prefix apps/web",
+    "dev:api": "go run ./apps/api/cmd/server",
+    "build:api": "go build ./apps/api/...",
+    "deps:api": "go mod tidy -C apps/api"
+  }
+}
