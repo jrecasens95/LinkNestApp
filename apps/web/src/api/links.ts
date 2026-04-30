@@ -1,4 +1,5 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+const API_KEY = import.meta.env.VITE_API_KEY;
 
 export type CreateLinkPayload = {
   original_url: string;
@@ -70,11 +71,17 @@ async function parseAPIError(response: Response, fallback: string) {
 }
 
 export async function createShortLink(payload: CreateLinkPayload): Promise<CreateLinkResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+
+  if (API_KEY) {
+    headers["X-API-Key"] = API_KEY;
+  }
+
   const response = await fetch(`${API_URL}/api/links`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers,
     body: JSON.stringify(payload)
   });
 

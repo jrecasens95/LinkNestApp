@@ -26,6 +26,10 @@ Current features:
 - `GET /:code` to redirect short links
 - `GET /api/health` health endpoint
 - URL validation for `http://` and `https://`
+- Strong URL validation with private/internal address blocking
+- Rate limit on `POST /api/links`
+- Security headers middleware
+- Optional private mode using `X-API-Key`
 - 6-character unique short codes
 - Basic CORS
 - Simple request logs
@@ -159,12 +163,35 @@ The backend reads these values from environment variables or `apps/api/.env`:
 | `DATABASE_URL` | PostgreSQL connection string | `postgres://linknest:linknest@localhost:5432/linknest?sslmode=disable` |
 | `BASE_URL` | Public base URL used to build short URLs | `http://localhost:4000` |
 | `PORT` | API port | `4000` |
+| `PRIVATE` | Require `X-API-Key` for creating links | `false` |
+| `API_KEY` | API key used when `PRIVATE=true` | `change-me` |
+| `MAX_URL_LENGTH` | Maximum accepted destination URL length | `2048` |
+| `BLACKLISTED_DOMAINS` | Comma-separated blocked domains | `localhost,local,internal,metadata.google.internal` |
 
 The frontend reads this value from `apps/web/.env`:
 
 | Name | Description | Example |
 | --- | --- | --- |
 | `VITE_API_URL` | Backend API URL | `http://localhost:4000` |
+| `VITE_API_KEY` | Optional key sent to `POST /api/links` for private deployments | `change-me` |
+
+## Security
+
+The API applies basic security controls:
+
+- `POST /api/links` is rate limited.
+- Destination URLs must be valid absolute `http://` or `https://` URLs.
+- URLs with credentials, control characters, invalid ports, or excessive length are rejected.
+- `localhost`, loopback addresses, private networks, link-local ranges, multicast, unspecified addresses, and configured blacklisted domains are blocked.
+- New links resolve their hostname before being saved to reduce internal-address redirects.
+- Existing links are validated again before redirecting.
+- Security headers are set globally.
+
+When `PRIVATE=true`, creating links requires:
+
+```bash
+X-API-Key: your-api-key
+```
 
 ## API
 
@@ -193,6 +220,8 @@ Validation:
 
 - `original_url` is required.
 - `original_url` must start with `http://` or `https://`.
+- `original_url` must not point to localhost, private/internal IP ranges, single-label hosts, or blacklisted domains.
+- If `PRIVATE=true`, requests must include `X-API-Key`.
 
 ### `GET /:code`
 
