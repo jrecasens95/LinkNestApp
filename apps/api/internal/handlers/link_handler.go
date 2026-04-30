@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"net"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -34,6 +35,25 @@ type linkResponse struct {
 	ShortURL    string  `json:"short_url"`
 	CreatedAt   string  `json:"created_at"`
 	UpdatedAt   string  `json:"updated_at"`
+}
+
+type clickEventResponse struct {
+	ID        uint   `json:"id"`
+	UserAgent string `json:"user_agent"`
+	Referer   string `json:"referer"`
+	IPAddress string `json:"ip_address"`
+	CreatedAt string `json:"created_at"`
+}
+
+type refererStatResponse struct {
+	Referer string `json:"referer"`
+	Count   int64  `json:"count"`
+}
+
+type linkStatsResponse struct {
+	TotalClicks  uint                  `json:"total_clicks"`
+	RecentClicks []clickEventResponse  `json:"recent_clicks"`
+	Referers     []refererStatResponse `json:"referers"`
 }
 
 func NewLinkHandler(baseURL string, service *services.LinkService) *LinkHandler {
@@ -108,6 +128,43 @@ func (h *LinkHandler) Get(c *fiber.Ctx) error {
 	return c.JSON(h.toLinkResponse(*link))
 }
 
+func (h *LinkHandler) Stats(c *fiber.Ctx) error {
+	id, err := parseID(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid link id"})
+	}
+
+	stats, err := h.service.Stats(id)
+	if err != nil {
+		return h.handleLinkError(c, err, "could not get link stats")
+	}
+
+	recentClicks := make([]clickEventResponse, 0, len(stats.RecentClicks))
+	for _, click := range stats.RecentClicks {
+		recentClicks = append(recentClicks, clickEventResponse{
+			ID:        click.ID,
+			UserAgent: click.UserAgent,
+			Referer:   click.Referer,
+			IPAddress: click.IPAddress,
+			CreatedAt: click.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	referers := make([]refererStatResponse, 0, len(stats.Referers))
+	for _, referer := range stats.Referers {
+		referers = append(referers, refererStatResponse{
+			Referer: referer.Referer,
+			Count:   referer.Count,
+		})
+	}
+
+	return c.JSON(linkStatsResponse{
+		TotalClicks:  stats.TotalClicks,
+		RecentClicks: recentClicks,
+		Referers:     referers,
+	})
+}
+
 func (h *LinkHandler) Update(c *fiber.Ctx) error {
 	id, err := parseID(c)
 	if err != nil {
@@ -155,7 +212,11 @@ func (h *LinkHandler) Delete(c *fiber.Ctx) error {
 
 func (h *LinkHandler) Redirect(c *fiber.Ctx) error {
 	code := c.Params("code")
-	link, err := h.service.Resolve(code)
+	link, err := h.service.Resolve(code, services.ClickInput{
+		UserAgent: c.Get("User-Agent"),
+		Referer:   c.Get("Referer"),
+		IPAddress: anonymizeIP(c.IP()),
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, services.ErrLinkNotFound):
@@ -203,4 +264,26 @@ func parseID(c *fiber.Ctx) (uint, error) {
 
 func isHTTPURL(value string) bool {
 	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
+}
+
+func anonymizeIP(value string) string {
+	ip := net.ParseIP(value)
+	if ip == nil {
+		return ""
+	}
+
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return net.IPv4(ipv4[0], ipv4[1], ipv4[2], 0).String()
+	}
+
+	ipv6 := ip.To16()
+	if ipv6 == nil {
+		return ""
+	}
+
+	for i := 8; i < len(ipv6); i++ {
+		ipv6[i] = 0
+	}
+
+	return ipv6.String()
 }

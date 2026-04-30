@@ -20,6 +20,7 @@ Current features:
 - `POST /api/links` to create short links
 - `GET /api/links` to list links
 - `GET /api/links/:id` to inspect one link
+- `GET /api/links/:id/stats` to inspect click statistics
 - `PATCH /api/links/:id` to edit title or activation status
 - `DELETE /api/links/:id` to remove a link
 - `GET /:code` to redirect short links
@@ -33,6 +34,8 @@ Current features:
 - Copy button for generated short URLs
 - Private dashboard without auth for single-instance administration
 - Link detail page with title editing, active/inactive toggle, clicks, and delete
+- Click events recorded on redirect with anonymized IP, user agent, referer, and timestamp
+- Basic stats view with total clicks, latest clicks, referers, and click dates
 
 ## Project Structure
 
@@ -208,6 +211,31 @@ Lists all links ordered by newest first.
 ### `GET /api/links/:id`
 
 Returns one link by internal ID.
+
+### `GET /api/links/:id/stats`
+
+Returns basic click statistics:
+
+```json
+{
+  "total_clicks": 12,
+  "recent_clicks": [
+    {
+      "id": 1,
+      "user_agent": "Mozilla/5.0",
+      "referer": "https://example.com",
+      "ip_address": "192.168.1.0",
+      "created_at": "2026-04-30T06:30:00Z"
+    }
+  ],
+  "referers": [
+    {
+      "referer": "https://example.com",
+      "count": 4
+    }
+  ]
+}
+```
 
 ### `PATCH /api/links/:id`
 

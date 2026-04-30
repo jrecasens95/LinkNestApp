@@ -25,6 +25,23 @@ type UpdateLinkInput struct {
 	IsActive *bool
 }
 
+type ClickInput struct {
+	UserAgent string
+	Referer   string
+	IPAddress string
+}
+
+type LinkStats struct {
+	TotalClicks  uint
+	RecentClicks []models.ClickEvent
+	Referers     []RefererStat
+}
+
+type RefererStat struct {
+	Referer string
+	Count   int64
+}
+
 func NewLinkService(db *gorm.DB) *LinkService {
 	return &LinkService{db: db}
 }
@@ -112,7 +129,41 @@ func (s *LinkService) Delete(id uint) error {
 	return nil
 }
 
-func (s *LinkService) Resolve(code string) (*models.ShortLink, error) {
+func (s *LinkService) Stats(id uint) (*LinkStats, error) {
+	link, err := s.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
+
+	var recentClicks []models.ClickEvent
+	if err := s.db.
+		Where("short_link_id = ?", id).
+		Order("created_at desc").
+		Limit(25).
+		Find(&recentClicks).Error; err != nil {
+		return nil, err
+	}
+
+	var referers []RefererStat
+	if err := s.db.
+		Model(&models.ClickEvent{}).
+		Select("COALESCE(NULLIF(referer, ''), 'Direct') AS referer, COUNT(*) AS count").
+		Where("short_link_id = ?", id).
+		Group("COALESCE(NULLIF(referer, ''), 'Direct')").
+		Order("count desc").
+		Limit(10).
+		Scan(&referers).Error; err != nil {
+		return nil, err
+	}
+
+	return &LinkStats{
+		TotalClicks:  link.ClicksCount,
+		RecentClicks: recentClicks,
+		Referers:     referers,
+	}, nil
+}
+
+func (s *LinkService) Resolve(code string, click ClickInput) (*models.ShortLink, error) {
 	var link models.ShortLink
 	if err := s.db.Where("code = ?", code).First(&link).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -129,7 +180,20 @@ func (s *LinkService) Resolve(code string) (*models.ShortLink, error) {
 		return nil, ErrLinkExpired
 	}
 
-	if err := s.db.Model(&link).UpdateColumn("clicks_count", gorm.Expr("clicks_count + ?", 1)).Error; err != nil {
+	if err := s.db.Transaction(func(tx *gorm.DB) error {
+		event := models.ClickEvent{
+			ShortLinkID: link.ID,
+			UserAgent:   click.UserAgent,
+			Referer:     click.Referer,
+			IPAddress:   click.IPAddress,
+		}
+
+		if err := tx.Create(&event).Error; err != nil {
+			return err
+		}
+
+		return tx.Model(&link).UpdateColumn("clicks_count", gorm.Expr("clicks_count + ?", 1)).Error
+	}); err != nil {
 		return nil, err
 	}
 
