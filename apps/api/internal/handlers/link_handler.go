@@ -7,12 +7,14 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jrecasens95/link-nest/backend/internal/models"
+	"github.com/jrecasens95/link-nest/backend/internal/security"
 	"github.com/jrecasens95/link-nest/backend/internal/services"
 )
 
 type LinkHandler struct {
-	baseURL string
-	service *services.LinkService
+	baseURL   string
+	service   *services.LinkService
+	validator *security.URLValidator
 }
 
 type createLinkRequest struct {
@@ -56,10 +58,11 @@ type linkStatsResponse struct {
 	Referers     []refererStatResponse `json:"referers"`
 }
 
-func NewLinkHandler(baseURL string, service *services.LinkService) *LinkHandler {
+func NewLinkHandler(baseURL string, service *services.LinkService, validator *security.URLValidator) *LinkHandler {
 	return &LinkHandler{
-		baseURL: baseURL,
-		service: service,
+		baseURL:   baseURL,
+		service:   service,
+		validator: validator,
 	}
 }
 
@@ -72,9 +75,9 @@ func (h *LinkHandler) Create(c *fiber.Ctx) error {
 	}
 
 	payload.OriginalURL = strings.TrimSpace(payload.OriginalURL)
-	if !isHTTPURL(payload.OriginalURL) {
+	if err := h.validator.ValidateCreateURL(payload.OriginalURL); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "original_url must start with http:// or https://",
+			"error": validationMessage(err),
 		})
 	}
 
@@ -228,6 +231,10 @@ func (h *LinkHandler) Redirect(c *fiber.Ctx) error {
 		}
 	}
 
+	if err := h.validator.ValidateRedirectURL(link.OriginalURL); err != nil {
+		return c.Status(fiber.StatusGone).JSON(fiber.Map{"error": "link target is no longer allowed"})
+	}
+
 	return c.Redirect(link.OriginalURL, fiber.StatusFound)
 }
 
@@ -262,10 +269,6 @@ func parseID(c *fiber.Ctx) (uint, error) {
 	return uint(id), nil
 }
 
-func isHTTPURL(value string) bool {
-	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
-}
-
 func anonymizeIP(value string) string {
 	ip := net.ParseIP(value)
 	if ip == nil {
@@ -286,4 +289,17 @@ func anonymizeIP(value string) string {
 	}
 
 	return ipv6.String()
+}
+
+func validationMessage(err error) string {
+	switch {
+	case errors.Is(err, security.ErrURLTooLong):
+		return "original_url is too long"
+	case errors.Is(err, security.ErrURLUnsupportedScheme):
+		return "original_url must start with http:// or https://"
+	case errors.Is(err, security.ErrURLBlockedHost), errors.Is(err, security.ErrURLPrivateAddress):
+		return "original_url host is not allowed"
+	default:
+		return "original_url is invalid"
+	}
 }
