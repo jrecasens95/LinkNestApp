@@ -1,8 +1,10 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
+const API_KEY = import.meta.env.VITE_API_KEY;
 
 export type CreateLinkPayload = {
   original_url: string;
   title?: string;
+  custom_alias?: string;
 };
 
 export type CreateLinkResponse = {
@@ -31,6 +33,25 @@ export type UpdateLinkPayload = {
   is_active?: boolean;
 };
 
+export type ClickEvent = {
+  id: number;
+  user_agent: string;
+  referer: string;
+  ip_address: string;
+  created_at: string;
+};
+
+export type RefererStat = {
+  referer: string;
+  count: number;
+};
+
+export type LinkStats = {
+  total_clicks: number;
+  recent_clicks: ClickEvent[];
+  referers: RefererStat[];
+};
+
 type APIErrorResponse = {
   error?: string;
 };
@@ -51,11 +72,17 @@ async function parseAPIError(response: Response, fallback: string) {
 }
 
 export async function createShortLink(payload: CreateLinkPayload): Promise<CreateLinkResponse> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json"
+  };
+
+  if (API_KEY) {
+    headers["X-API-Key"] = API_KEY;
+  }
+
   const response = await fetch(`${API_URL}/api/links`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
+    headers,
     body: JSON.stringify(payload)
   });
 
@@ -111,4 +138,14 @@ export async function deleteLink(id: number): Promise<void> {
   if (!response.ok) {
     throw await parseAPIError(response, "Could not delete this link.");
   }
+}
+
+export async function getLinkStats(id: string): Promise<LinkStats> {
+  const response = await fetch(`${API_URL}/api/links/${id}/stats`);
+
+  if (!response.ok) {
+    throw await parseAPIError(response, "Could not load link stats.");
+  }
+
+  return response.json() as Promise<LinkStats>;
 }

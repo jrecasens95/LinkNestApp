@@ -2,21 +2,25 @@ package handlers
 
 import (
 	"errors"
+	"net"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/jrecasens95/link-nest/backend/internal/models"
+	"github.com/jrecasens95/link-nest/backend/internal/security"
 	"github.com/jrecasens95/link-nest/backend/internal/services"
 )
 
 type LinkHandler struct {
-	baseURL string
-	service *services.LinkService
+	baseURL   string
+	service   *services.LinkService
+	validator *security.URLValidator
 }
 
 type createLinkRequest struct {
 	OriginalURL string  `json:"original_url"`
 	Title       *string `json:"title"`
+	CustomAlias *string `json:"custom_alias"`
 }
 
 type updateLinkRequest struct {
@@ -36,10 +40,30 @@ type linkResponse struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
-func NewLinkHandler(baseURL string, service *services.LinkService) *LinkHandler {
+type clickEventResponse struct {
+	ID        uint   `json:"id"`
+	UserAgent string `json:"user_agent"`
+	Referer   string `json:"referer"`
+	IPAddress string `json:"ip_address"`
+	CreatedAt string `json:"created_at"`
+}
+
+type refererStatResponse struct {
+	Referer string `json:"referer"`
+	Count   int64  `json:"count"`
+}
+
+type linkStatsResponse struct {
+	TotalClicks  uint                  `json:"total_clicks"`
+	RecentClicks []clickEventResponse  `json:"recent_clicks"`
+	Referers     []refererStatResponse `json:"referers"`
+}
+
+func NewLinkHandler(baseURL string, service *services.LinkService, validator *security.URLValidator) *LinkHandler {
 	return &LinkHandler{
-		baseURL: baseURL,
-		service: service,
+		baseURL:   baseURL,
+		service:   service,
+		validator: validator,
 	}
 }
 
@@ -52,9 +76,9 @@ func (h *LinkHandler) Create(c *fiber.Ctx) error {
 	}
 
 	payload.OriginalURL = strings.TrimSpace(payload.OriginalURL)
-	if !isHTTPURL(payload.OriginalURL) {
+	if err := h.validator.ValidateCreateURL(payload.OriginalURL); err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "original_url must start with http:// or https://",
+			"error": validationMessage(err),
 		})
 	}
 
@@ -67,8 +91,25 @@ func (h *LinkHandler) Create(c *fiber.Ctx) error {
 		}
 	}
 
-	link, err := h.service.Create(payload.OriginalURL, payload.Title)
+	if payload.CustomAlias != nil {
+		alias := strings.TrimSpace(*payload.CustomAlias)
+		if alias == "" {
+			payload.CustomAlias = nil
+		} else {
+			payload.CustomAlias = &alias
+		}
+	}
+
+	link, err := h.service.Create(payload.OriginalURL, payload.Title, payload.CustomAlias)
 	if err != nil {
+		if errors.Is(err, services.ErrInvalidAlias) ||
+			errors.Is(err, services.ErrReservedAlias) ||
+			errors.Is(err, services.ErrAliasExists) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "could not create short link",
 		})
@@ -106,6 +147,43 @@ func (h *LinkHandler) Get(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(h.toLinkResponse(*link))
+}
+
+func (h *LinkHandler) Stats(c *fiber.Ctx) error {
+	id, err := parseID(c)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid link id"})
+	}
+
+	stats, err := h.service.Stats(id)
+	if err != nil {
+		return h.handleLinkError(c, err, "could not get link stats")
+	}
+
+	recentClicks := make([]clickEventResponse, 0, len(stats.RecentClicks))
+	for _, click := range stats.RecentClicks {
+		recentClicks = append(recentClicks, clickEventResponse{
+			ID:        click.ID,
+			UserAgent: click.UserAgent,
+			Referer:   click.Referer,
+			IPAddress: click.IPAddress,
+			CreatedAt: click.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		})
+	}
+
+	referers := make([]refererStatResponse, 0, len(stats.Referers))
+	for _, referer := range stats.Referers {
+		referers = append(referers, refererStatResponse{
+			Referer: referer.Referer,
+			Count:   referer.Count,
+		})
+	}
+
+	return c.JSON(linkStatsResponse{
+		TotalClicks:  stats.TotalClicks,
+		RecentClicks: recentClicks,
+		Referers:     referers,
+	})
 }
 
 func (h *LinkHandler) Update(c *fiber.Ctx) error {
@@ -155,7 +233,11 @@ func (h *LinkHandler) Delete(c *fiber.Ctx) error {
 
 func (h *LinkHandler) Redirect(c *fiber.Ctx) error {
 	code := c.Params("code")
-	link, err := h.service.Resolve(code)
+	link, err := h.service.Resolve(code, services.ClickInput{
+		UserAgent: c.Get("User-Agent"),
+		Referer:   c.Get("Referer"),
+		IPAddress: anonymizeIP(c.IP()),
+	})
 	if err != nil {
 		switch {
 		case errors.Is(err, services.ErrLinkNotFound):
@@ -165,6 +247,10 @@ func (h *LinkHandler) Redirect(c *fiber.Ctx) error {
 		default:
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not resolve link"})
 		}
+	}
+
+	if err := h.validator.ValidateRedirectURL(link.OriginalURL); err != nil {
+		return c.Status(fiber.StatusGone).JSON(fiber.Map{"error": "link target is no longer allowed"})
 	}
 
 	return c.Redirect(link.OriginalURL, fiber.StatusFound)
@@ -201,6 +287,37 @@ func parseID(c *fiber.Ctx) (uint, error) {
 	return uint(id), nil
 }
 
-func isHTTPURL(value string) bool {
-	return strings.HasPrefix(value, "http://") || strings.HasPrefix(value, "https://")
+func anonymizeIP(value string) string {
+	ip := net.ParseIP(value)
+	if ip == nil {
+		return ""
+	}
+
+	if ipv4 := ip.To4(); ipv4 != nil {
+		return net.IPv4(ipv4[0], ipv4[1], ipv4[2], 0).String()
+	}
+
+	ipv6 := ip.To16()
+	if ipv6 == nil {
+		return ""
+	}
+
+	for i := 8; i < len(ipv6); i++ {
+		ipv6[i] = 0
+	}
+
+	return ipv6.String()
+}
+
+func validationMessage(err error) string {
+	switch {
+	case errors.Is(err, security.ErrURLTooLong):
+		return "original_url is too long"
+	case errors.Is(err, security.ErrURLUnsupportedScheme):
+		return "original_url must start with http:// or https://"
+	case errors.Is(err, security.ErrURLBlockedHost), errors.Is(err, security.ErrURLPrivateAddress):
+		return "original_url host is not allowed"
+	default:
+		return "original_url is invalid"
+	}
 }

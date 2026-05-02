@@ -20,12 +20,18 @@ Current features:
 - `POST /api/links` to create short links
 - `GET /api/links` to list links
 - `GET /api/links/:id` to inspect one link
+- `GET /api/links/:id/stats` to inspect click statistics
 - `PATCH /api/links/:id` to edit title or activation status
 - `DELETE /api/links/:id` to remove a link
 - `GET /:code` to redirect short links
 - `GET /api/health` health endpoint
 - URL validation for `http://` and `https://`
+- Strong URL validation with private/internal address blocking
+- Rate limit on `POST /api/links`
+- Security headers middleware
+- Optional private mode using `X-API-Key`
 - 6-character unique short codes
+- Optional custom aliases for short links
 - Basic CORS
 - Simple request logs
 - Responsive SaaS-style landing page
@@ -33,6 +39,8 @@ Current features:
 - Copy button for generated short URLs
 - Private dashboard without auth for single-instance administration
 - Link detail page with title editing, active/inactive toggle, clicks, and delete
+- Click events recorded on redirect with anonymized IP, user agent, referer, and timestamp
+- Basic stats view with total clicks, latest clicks, referers, and click dates
 
 ## Project Structure
 
@@ -156,12 +164,35 @@ The backend reads these values from environment variables or `apps/api/.env`:
 | `DATABASE_URL` | PostgreSQL connection string | `postgres://linknest:linknest@localhost:5432/linknest?sslmode=disable` |
 | `BASE_URL` | Public base URL used to build short URLs | `http://localhost:4000` |
 | `PORT` | API port | `4000` |
+| `PRIVATE` | Require `X-API-Key` for creating links | `false` |
+| `API_KEY` | API key used when `PRIVATE=true` | `change-me` |
+| `MAX_URL_LENGTH` | Maximum accepted destination URL length | `2048` |
+| `BLACKLISTED_DOMAINS` | Comma-separated blocked domains | `localhost,local,internal,metadata.google.internal` |
 
 The frontend reads this value from `apps/web/.env`:
 
 | Name | Description | Example |
 | --- | --- | --- |
 | `VITE_API_URL` | Backend API URL | `http://localhost:4000` |
+| `VITE_API_KEY` | Optional key sent to `POST /api/links` for private deployments | `change-me` |
+
+## Security
+
+The API applies basic security controls:
+
+- `POST /api/links` is rate limited.
+- Destination URLs must be valid absolute `http://` or `https://` URLs.
+- URLs with credentials, control characters, invalid ports, or excessive length are rejected.
+- `localhost`, loopback addresses, private networks, link-local ranges, multicast, unspecified addresses, and configured blacklisted domains are blocked.
+- New links resolve their hostname before being saved to reduce internal-address redirects.
+- Existing links are validated again before redirecting.
+- Security headers are set globally.
+
+When `PRIVATE=true`, creating links requires:
+
+```bash
+X-API-Key: your-api-key
+```
 
 ## API
 
@@ -182,7 +213,8 @@ Request body:
 ```json
 {
   "original_url": "https://example.com",
-  "title": "Optional title"
+  "title": "Optional title",
+  "custom_alias": "spring_launch"
 }
 ```
 
@@ -190,6 +222,11 @@ Validation:
 
 - `original_url` is required.
 - `original_url` must start with `http://` or `https://`.
+- `original_url` must not point to localhost, private/internal IP ranges, single-label hosts, or blacklisted domains.
+- `custom_alias` is optional and must be 3-40 characters using only letters, numbers, hyphens, and underscores.
+- Reserved aliases are not allowed: `api`, `admin`, `dashboard`, `login`, `register`, `health`, `stats`.
+- Existing aliases return a clear validation error.
+- If `PRIVATE=true`, requests must include `X-API-Key`.
 
 ### `GET /:code`
 
@@ -208,6 +245,31 @@ Lists all links ordered by newest first.
 ### `GET /api/links/:id`
 
 Returns one link by internal ID.
+
+### `GET /api/links/:id/stats`
+
+Returns basic click statistics:
+
+```json
+{
+  "total_clicks": 12,
+  "recent_clicks": [
+    {
+      "id": 1,
+      "user_agent": "Mozilla/5.0",
+      "referer": "https://example.com",
+      "ip_address": "192.168.1.0",
+      "created_at": "2026-04-30T06:30:00Z"
+    }
+  ],
+  "referers": [
+    {
+      "referer": "https://example.com",
+      "count": 4
+    }
+  ]
+}
+```
 
 ### `PATCH /api/links/:id`
 
