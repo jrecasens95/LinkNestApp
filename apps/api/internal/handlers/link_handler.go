@@ -100,7 +100,12 @@ func (h *LinkHandler) Create(c *fiber.Ctx) error {
 		}
 	}
 
-	link, err := h.service.Create(payload.OriginalURL, payload.Title, payload.CustomAlias)
+	userID, ok := currentUserID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	link, err := h.service.Create(payload.OriginalURL, payload.Title, payload.CustomAlias, userID)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidAlias) ||
 			errors.Is(err, services.ErrReservedAlias) ||
@@ -122,7 +127,12 @@ func (h *LinkHandler) Create(c *fiber.Ctx) error {
 }
 
 func (h *LinkHandler) List(c *fiber.Ctx) error {
-	links, err := h.service.List()
+	userID, ok := currentUserID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	links, err := h.service.List(userID)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "could not list links"})
 	}
@@ -141,7 +151,12 @@ func (h *LinkHandler) Get(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid link id"})
 	}
 
-	link, err := h.service.GetByID(id)
+	userID, ok := currentUserID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	link, err := h.service.GetByID(id, userID)
 	if err != nil {
 		return h.handleLinkError(c, err, "could not get link")
 	}
@@ -155,7 +170,12 @@ func (h *LinkHandler) Stats(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid link id"})
 	}
 
-	stats, err := h.service.Stats(id)
+	userID, ok := currentUserID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	stats, err := h.service.Stats(id, userID)
 	if err != nil {
 		return h.handleLinkError(c, err, "could not get link stats")
 	}
@@ -207,7 +227,12 @@ func (h *LinkHandler) Update(c *fiber.Ctx) error {
 		titleUpdate = &titleValue
 	}
 
-	link, err := h.service.Update(id, services.UpdateLinkInput{
+	userID, ok := currentUserID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	link, err := h.service.Update(id, userID, services.UpdateLinkInput{
 		Title:    titleUpdate,
 		IsActive: payload.IsActive,
 	})
@@ -224,7 +249,12 @@ func (h *LinkHandler) Delete(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid link id"})
 	}
 
-	if err := h.service.Delete(id); err != nil {
+	userID, ok := currentUserID(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+
+	if err := h.service.Delete(id, userID); err != nil {
 		return h.handleLinkError(c, err, "could not delete link")
 	}
 
@@ -285,6 +315,11 @@ func parseID(c *fiber.Ctx) (uint, error) {
 	}
 
 	return uint(id), nil
+}
+
+func currentUserID(c *fiber.Ctx) (uint, bool) {
+	userID, ok := c.Locals("user_id").(uint)
+	return userID, ok
 }
 
 func anonymizeIP(value string) string {

@@ -4,6 +4,8 @@ import "time"
 
 type ShortLink struct {
 	ID          uint         `gorm:"primaryKey" json:"id"`
+	UserID      *uint        `gorm:"index" json:"user_id,omitempty"`
+	User        *User        `gorm:"constraint:OnDelete:SET NULL" json:"-"`
 	Code        string       `gorm:"size:40;uniqueIndex;not null" json:"code"`
 	OriginalURL string       `gorm:"not null" json:"original_url"`
 	Title       *string      `gorm:"size:255" json:"title,omitempty"`
@@ -22,4 +24,13 @@ type ClickEvent struct {
 	Referer     string    `gorm:"type:text" json:"referer"`
 	IPAddress   string    `gorm:"size:64" json:"ip_address"`
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+type User struct {
+	ID           uint      `gorm:"primaryKey" json:"id"`
+	Name         string    `gorm:"size:120;not null" json:"name"`
+	Email        string    `gorm:"size:255;uniqueIndex;not null" json:"email"`
+	PasswordHash string    `gorm:"not null" json:"-"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
 }

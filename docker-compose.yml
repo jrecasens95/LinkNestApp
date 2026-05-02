@@ -23,7 +23,9 @@ services:
       BASE_URL: http://localhost:4000
       PORT: 4000
       PRIVATE: "false"
+      INVITE_ONLY: "false"
       API_KEY: change-me
+      JWT_SECRET: change-me-in-production
       MAX_URL_LENGTH: 2048
       BLACKLISTED_DOMAINS: localhost,local,internal,metadata.google.internal
     ports:

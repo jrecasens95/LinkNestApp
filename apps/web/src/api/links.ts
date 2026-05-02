@@ -1,5 +1,27 @@
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:4000";
 const API_KEY = import.meta.env.VITE_API_KEY;
+const TOKEN_KEY = "linknest_token";
+
+export function getAuthToken() {
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string) {
+  window.localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearAuthToken() {
+  window.localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(): Record<string, string> {
+  const token = getAuthToken();
+  if (!token) {
+    return {};
+  }
+
+  return { Authorization: `Bearer ${token}` };
+}
 
 export type CreateLinkPayload = {
   original_url: string;
@@ -73,7 +95,8 @@ async function parseAPIError(response: Response, fallback: string) {
 
 export async function createShortLink(payload: CreateLinkPayload): Promise<CreateLinkResponse> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json"
+    "Content-Type": "application/json",
+    ...authHeaders()
   };
 
   if (API_KEY) {
@@ -94,7 +117,9 @@ export async function createShortLink(payload: CreateLinkPayload): Promise<Creat
 }
 
 export async function listLinks(): Promise<ShortLink[]> {
-  const response = await fetch(`${API_URL}/api/links`);
+  const response = await fetch(`${API_URL}/api/links`, {
+    headers: authHeaders()
+  });
 
   if (!response.ok) {
     throw await parseAPIError(response, "Could not load links.");
@@ -105,7 +130,9 @@ export async function listLinks(): Promise<ShortLink[]> {
 }
 
 export async function getLink(id: string): Promise<ShortLink> {
-  const response = await fetch(`${API_URL}/api/links/${id}`);
+  const response = await fetch(`${API_URL}/api/links/${id}`, {
+    headers: authHeaders()
+  });
 
   if (!response.ok) {
     throw await parseAPIError(response, "Could not load this link.");
@@ -118,7 +145,8 @@ export async function updateLink(id: number, payload: UpdateLinkPayload): Promis
   const response = await fetch(`${API_URL}/api/links/${id}`, {
     method: "PATCH",
     headers: {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      ...authHeaders()
     },
     body: JSON.stringify(payload)
   });
@@ -132,7 +160,8 @@ export async function updateLink(id: number, payload: UpdateLinkPayload): Promis
 
 export async function deleteLink(id: number): Promise<void> {
   const response = await fetch(`${API_URL}/api/links/${id}`, {
-    method: "DELETE"
+    method: "DELETE",
+    headers: authHeaders()
   });
 
   if (!response.ok) {
@@ -141,7 +170,9 @@ export async function deleteLink(id: number): Promise<void> {
 }
 
 export async function getLinkStats(id: string): Promise<LinkStats> {
-  const response = await fetch(`${API_URL}/api/links/${id}/stats`);
+  const response = await fetch(`${API_URL}/api/links/${id}/stats`, {
+    headers: authHeaders()
+  });
 
   if (!response.ok) {
     throw await parseAPIError(response, "Could not load link stats.");

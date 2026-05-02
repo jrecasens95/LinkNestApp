@@ -9,6 +9,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/helmet"
 	"github.com/gofiber/fiber/v2/middleware/limiter"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/jrecasens95/link-nest/backend/internal/auth"
 	"github.com/jrecasens95/link-nest/backend/internal/config"
 	"github.com/jrecasens95/link-nest/backend/internal/database"
 	"github.com/jrecasens95/link-nest/backend/internal/handlers"
@@ -40,8 +41,11 @@ func main() {
 	app.Use(cors.New())
 
 	linkService := services.NewLinkService(db)
+	authService := auth.NewService(db, cfg.JWTSecret)
 	urlValidator := security.NewURLValidator(cfg.MaxURLLength, cfg.BlacklistedDomains)
 	linkHandler := handlers.NewLinkHandler(cfg.BaseURL, linkService, urlValidator)
+	authHandler := handlers.NewAuthHandler(authService, cfg.InviteOnly, cfg.APIKey)
+	requireAuth := middleware.RequireAuth(authService)
 	createLinkLimiter := limiter.New(limiter.Config{
 		Max:        20,
 		Expiration: time.Minute,
@@ -49,12 +53,15 @@ func main() {
 	privateCreate := middleware.RequireAPIKey(cfg.Private, cfg.APIKey)
 
 	app.Get("/api/health", handlers.Health)
-	app.Get("/api/links", linkHandler.List)
-	app.Post("/api/links", createLinkLimiter, privateCreate, linkHandler.Create)
-	app.Get("/api/links/:id", linkHandler.Get)
-	app.Get("/api/links/:id/stats", linkHandler.Stats)
-	app.Patch("/api/links/:id", linkHandler.Update)
-	app.Delete("/api/links/:id", linkHandler.Delete)
+	app.Post("/api/auth/register", authHandler.Register)
+	app.Post("/api/auth/login", authHandler.Login)
+	app.Get("/api/auth/me", requireAuth, authHandler.Me)
+	app.Get("/api/links", requireAuth, linkHandler.List)
+	app.Post("/api/links", requireAuth, createLinkLimiter, privateCreate, linkHandler.Create)
+	app.Get("/api/links/:id", requireAuth, linkHandler.Get)
+	app.Get("/api/links/:id/stats", requireAuth, linkHandler.Stats)
+	app.Patch("/api/links/:id", requireAuth, linkHandler.Update)
+	app.Delete("/api/links/:id", requireAuth, linkHandler.Delete)
 	app.Get("/:code", linkHandler.Redirect)
 
 	log.Printf("LinkNest API listening on port %s", cfg.Port)
