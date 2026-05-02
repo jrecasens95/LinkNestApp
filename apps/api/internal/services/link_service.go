@@ -2,6 +2,7 @@ package services
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 
@@ -11,10 +12,25 @@ import (
 )
 
 var (
-	ErrLinkNotFound = errors.New("link not found")
-	ErrLinkInactive = errors.New("link inactive")
-	ErrLinkExpired  = errors.New("link expired")
+	ErrLinkNotFound  = errors.New("link not found")
+	ErrLinkInactive  = errors.New("link inactive")
+	ErrLinkExpired   = errors.New("link expired")
+	ErrInvalidAlias  = errors.New("alias must be 3-40 characters and only contain letters, numbers, hyphens, and underscores")
+	ErrReservedAlias = errors.New("alias is reserved")
+	ErrAliasExists   = errors.New("alias already exists")
 )
+
+var aliasPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{3,40}$`)
+
+var reservedAliases = map[string]struct{}{
+	"api":       {},
+	"admin":     {},
+	"dashboard": {},
+	"login":     {},
+	"register":  {},
+	"health":    {},
+	"stats":     {},
+}
 
 type LinkService struct {
 	db *gorm.DB
@@ -46,7 +62,30 @@ func NewLinkService(db *gorm.DB) *LinkService {
 	return &LinkService{db: db}
 }
 
-func (s *LinkService) Create(originalURL string, title *string) (*models.ShortLink, error) {
+func (s *LinkService) Create(originalURL string, title *string, customAlias *string) (*models.ShortLink, error) {
+	if customAlias != nil {
+		alias := strings.TrimSpace(*customAlias)
+		if err := validateAlias(alias); err != nil {
+			return nil, err
+		}
+
+		link := &models.ShortLink{
+			Code:        alias,
+			OriginalURL: originalURL,
+			Title:       title,
+			IsActive:    true,
+		}
+
+		if err := s.db.Create(link).Error; err != nil {
+			if isDuplicateError(err) {
+				return nil, ErrAliasExists
+			}
+			return nil, err
+		}
+
+		return link, nil
+	}
+
 	for range 10 {
 		code, err := utils.GenerateCode(6)
 		if err != nil {
@@ -61,7 +100,7 @@ func (s *LinkService) Create(originalURL string, title *string) (*models.ShortLi
 		}
 
 		if err := s.db.Create(link).Error; err != nil {
-			if strings.Contains(strings.ToLower(err.Error()), "duplicate") {
+			if isDuplicateError(err) {
 				continue
 			}
 			return nil, err
@@ -71,6 +110,22 @@ func (s *LinkService) Create(originalURL string, title *string) (*models.ShortLi
 	}
 
 	return nil, errors.New("could not generate unique short code")
+}
+
+func validateAlias(alias string) error {
+	if !aliasPattern.MatchString(alias) {
+		return ErrInvalidAlias
+	}
+	if _, reserved := reservedAliases[strings.ToLower(alias)]; reserved {
+		return ErrReservedAlias
+	}
+
+	return nil
+}
+
+func isDuplicateError(err error) bool {
+	message := strings.ToLower(err.Error())
+	return strings.Contains(message, "duplicate") || strings.Contains(message, "unique")
 }
 
 func (s *LinkService) List() ([]models.ShortLink, error) {
