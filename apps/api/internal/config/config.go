@@ -14,7 +14,9 @@ type Config struct {
 	BaseURL            string
 	Port               string
 	Private            bool
+	InviteOnly         bool
 	APIKey             string
+	JWTSecret          string
 	MaxURLLength       int
 	BlacklistedDomains []string
 }
@@ -27,7 +29,9 @@ func Load() Config {
 		BaseURL:            strings.TrimRight(getEnv("BASE_URL", "http://localhost:4000"), "/"),
 		Port:               getEnv("PORT", "4000"),
 		Private:            getBoolEnv("PRIVATE", false),
+		InviteOnly:         getBoolEnv("INVITE_ONLY", false),
 		APIKey:             getEnv("API_KEY", ""),
+		JWTSecret:          getEnv("JWT_SECRET", "change-me-in-production"),
 		MaxURLLength:       getIntEnv("MAX_URL_LENGTH", 2048),
 		BlacklistedDomains: getCSVEnv("BLACKLISTED_DOMAINS", "localhost,local,internal,metadata.google.internal"),
 	}

@@ -22,5 +22,5 @@ func Connect(databaseURL string) (*gorm.DB, error) {
 }
 
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(&models.ShortLink{}, &models.ClickEvent{})
+	return db.AutoMigrate(&models.User{}, &models.ShortLink{}, &models.ClickEvent{})
 }

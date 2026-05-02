@@ -9,7 +9,7 @@ LinkNest is a private, self-hosted URL shortener for personal use, teams, newsro
 - Database: PostgreSQL
 - Frontend: React + Vite + Tailwind
 - Deployment: Docker Compose
-- Auth: planned for later phases
+- Auth: JWT multi-user auth
 
 ## MVP
 
@@ -18,6 +18,9 @@ Current features:
 - PostgreSQL connection through GORM
 - `ShortLink` model with automatic migration
 - `POST /api/links` to create short links
+- `POST /api/auth/register` to create users
+- `POST /api/auth/login` to sign in
+- `GET /api/auth/me` to fetch the current user
 - `GET /api/links` to list links
 - `GET /api/links/:id` to inspect one link
 - `GET /api/links/:id/stats` to inspect click statistics
@@ -29,7 +32,7 @@ Current features:
 - Strong URL validation with private/internal address blocking
 - Rate limit on `POST /api/links`
 - Security headers middleware
-- Optional private mode using `X-API-Key`
+- Optional invite-only registration using `X-API-Key`
 - 6-character unique short codes
 - Optional custom aliases for short links
 - Basic CORS
@@ -37,10 +40,11 @@ Current features:
 - Responsive SaaS-style landing page
 - Form to create short links
 - Copy button for generated short URLs
-- Private dashboard without auth for single-instance administration
+- Private multi-user dashboard
 - Link detail page with title editing, active/inactive toggle, clicks, and delete
 - Click events recorded on redirect with anonymized IP, user agent, referer, and timestamp
 - Basic stats view with total clicks, latest clicks, referers, and click dates
+- Each user only sees and manages their own links
 
 ## Project Structure
 
@@ -83,6 +87,8 @@ http://localhost:3000
 Frontend routes:
 
 - `/` creates a new short link.
+- `/login` signs in.
+- `/register` creates an account.
 - `/dashboard` lists all links.
 - `/dashboard/links/:id` opens the link detail page.
 
@@ -103,6 +109,7 @@ Create a short link:
 ```bash
 curl -X POST http://localhost:4000/api/links \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_JWT" \
   -d '{"original_url":"https://example.com/some/long/path","title":"Example"}'
 ```
 
@@ -165,7 +172,9 @@ The backend reads these values from environment variables or `apps/api/.env`:
 | `BASE_URL` | Public base URL used to build short URLs | `http://localhost:4000` |
 | `PORT` | API port | `4000` |
 | `PRIVATE` | Require `X-API-Key` for creating links | `false` |
+| `INVITE_ONLY` | Require `X-API-Key` for registration | `false` |
 | `API_KEY` | API key used when `PRIVATE=true` | `change-me` |
+| `JWT_SECRET` | Secret used to sign JWTs | `change-me-in-production` |
 | `MAX_URL_LENGTH` | Maximum accepted destination URL length | `2048` |
 | `BLACKLISTED_DOMAINS` | Comma-separated blocked domains | `localhost,local,internal,metadata.google.internal` |
 
@@ -174,7 +183,7 @@ The frontend reads this value from `apps/web/.env`:
 | Name | Description | Example |
 | --- | --- | --- |
 | `VITE_API_URL` | Backend API URL | `http://localhost:4000` |
-| `VITE_API_KEY` | Optional key sent to `POST /api/links` for private deployments | `change-me` |
+| `VITE_API_KEY` | Optional key sent to private create/register requests | `change-me` |
 
 ## Security
 
@@ -188,11 +197,21 @@ The API applies basic security controls:
 - Existing links are validated again before redirecting.
 - Security headers are set globally.
 
-When `PRIVATE=true`, creating links requires:
+Most `/api/links` routes require:
+
+```bash
+Authorization: Bearer your-jwt
+```
+
+The public redirect route `GET /:code` does not require login.
+
+When `PRIVATE=true`, creating links also requires:
 
 ```bash
 X-API-Key: your-api-key
 ```
+
+When `INVITE_ONLY=true`, registration requires the same `X-API-Key` header.
 
 ## API
 
@@ -205,6 +224,37 @@ Returns:
   "status": "ok"
 }
 ```
+
+### `POST /api/auth/register`
+
+Request body:
+
+```json
+{
+  "name": "Jane Doe",
+  "email": "jane@example.com",
+  "password": "minimum8"
+}
+```
+
+Returns a JWT and user. If `INVITE_ONLY=true`, include `X-API-Key`.
+
+### `POST /api/auth/login`
+
+Request body:
+
+```json
+{
+  "email": "jane@example.com",
+  "password": "minimum8"
+}
+```
+
+Returns a JWT and user.
+
+### `GET /api/auth/me`
+
+Returns the current user. Requires `Authorization: Bearer ...`.
 
 ### `POST /api/links`
 
@@ -226,6 +276,7 @@ Validation:
 - `custom_alias` is optional and must be 3-40 characters using only letters, numbers, hyphens, and underscores.
 - Reserved aliases are not allowed: `api`, `admin`, `dashboard`, `login`, `register`, `health`, `stats`.
 - Existing aliases return a clear validation error.
+- Requests must include a valid JWT bearer token.
 - If `PRIVATE=true`, requests must include `X-API-Key`.
 
 ### `GET /:code`
@@ -240,11 +291,11 @@ Responses:
 
 ### `GET /api/links`
 
-Lists all links ordered by newest first.
+Lists the current user's links ordered by newest first. Requires a JWT bearer token.
 
 ### `GET /api/links/:id`
 
-Returns one link by internal ID.
+Returns one current-user link by internal ID. Requires a JWT bearer token.
 
 ### `GET /api/links/:id/stats`
 

@@ -62,7 +62,7 @@ func NewLinkService(db *gorm.DB) *LinkService {
 	return &LinkService{db: db}
 }
 
-func (s *LinkService) Create(originalURL string, title *string, customAlias *string) (*models.ShortLink, error) {
+func (s *LinkService) Create(originalURL string, title *string, customAlias *string, userID uint) (*models.ShortLink, error) {
 	if customAlias != nil {
 		alias := strings.TrimSpace(*customAlias)
 		if err := validateAlias(alias); err != nil {
@@ -71,6 +71,7 @@ func (s *LinkService) Create(originalURL string, title *string, customAlias *str
 
 		link := &models.ShortLink{
 			Code:        alias,
+			UserID:      &userID,
 			OriginalURL: originalURL,
 			Title:       title,
 			IsActive:    true,
@@ -94,6 +95,7 @@ func (s *LinkService) Create(originalURL string, title *string, customAlias *str
 
 		link := &models.ShortLink{
 			Code:        code,
+			UserID:      &userID,
 			OriginalURL: originalURL,
 			Title:       title,
 			IsActive:    true,
@@ -128,18 +130,18 @@ func isDuplicateError(err error) bool {
 	return strings.Contains(message, "duplicate") || strings.Contains(message, "unique")
 }
 
-func (s *LinkService) List() ([]models.ShortLink, error) {
+func (s *LinkService) List(userID uint) ([]models.ShortLink, error) {
 	var links []models.ShortLink
-	if err := s.db.Order("created_at desc").Find(&links).Error; err != nil {
+	if err := s.db.Where("user_id = ?", userID).Order("created_at desc").Find(&links).Error; err != nil {
 		return nil, err
 	}
 
 	return links, nil
 }
 
-func (s *LinkService) GetByID(id uint) (*models.ShortLink, error) {
+func (s *LinkService) GetByID(id uint, userID uint) (*models.ShortLink, error) {
 	var link models.ShortLink
-	if err := s.db.First(&link, id).Error; err != nil {
+	if err := s.db.Where("user_id = ?", userID).First(&link, id).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrLinkNotFound
 		}
@@ -149,8 +151,8 @@ func (s *LinkService) GetByID(id uint) (*models.ShortLink, error) {
 	return &link, nil
 }
 
-func (s *LinkService) Update(id uint, input UpdateLinkInput) (*models.ShortLink, error) {
-	link, err := s.GetByID(id)
+func (s *LinkService) Update(id uint, userID uint, input UpdateLinkInput) (*models.ShortLink, error) {
+	link, err := s.GetByID(id, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -169,11 +171,11 @@ func (s *LinkService) Update(id uint, input UpdateLinkInput) (*models.ShortLink,
 		}
 	}
 
-	return s.GetByID(id)
+	return s.GetByID(id, userID)
 }
 
-func (s *LinkService) Delete(id uint) error {
-	result := s.db.Delete(&models.ShortLink{}, id)
+func (s *LinkService) Delete(id uint, userID uint) error {
+	result := s.db.Where("user_id = ?", userID).Delete(&models.ShortLink{}, id)
 	if result.Error != nil {
 		return result.Error
 	}
@@ -184,8 +186,8 @@ func (s *LinkService) Delete(id uint) error {
 	return nil
 }
 
-func (s *LinkService) Stats(id uint) (*LinkStats, error) {
-	link, err := s.GetByID(id)
+func (s *LinkService) Stats(id uint, userID uint) (*LinkStats, error) {
+	link, err := s.GetByID(id, userID)
 	if err != nil {
 		return nil, err
 	}

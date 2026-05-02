@@ -13,7 +13,7 @@ export function HomePage() {
           <div className="hero-metrics" aria-label="Product highlights">
             <span>Private by design</span>
             <span>PostgreSQL backed</span>
-            <span>No login yet</span>
+            <span>Multi-user auth</span>
           </div>
         </div>
 
