@@ -4,6 +4,7 @@ const API_KEY = import.meta.env.VITE_API_KEY;
 export type CreateLinkPayload = {
   original_url: string;
   title?: string;
+  custom_alias?: string;
 };
 
 export type CreateLinkResponse = {

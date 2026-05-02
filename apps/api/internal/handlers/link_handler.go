@@ -20,6 +20,7 @@ type LinkHandler struct {
 type createLinkRequest struct {
 	OriginalURL string  `json:"original_url"`
 	Title       *string `json:"title"`
+	CustomAlias *string `json:"custom_alias"`
 }
 
 type updateLinkRequest struct {
@@ -90,8 +91,25 @@ func (h *LinkHandler) Create(c *fiber.Ctx) error {
 		}
 	}
 
-	link, err := h.service.Create(payload.OriginalURL, payload.Title)
+	if payload.CustomAlias != nil {
+		alias := strings.TrimSpace(*payload.CustomAlias)
+		if alias == "" {
+			payload.CustomAlias = nil
+		} else {
+			payload.CustomAlias = &alias
+		}
+	}
+
+	link, err := h.service.Create(payload.OriginalURL, payload.Title, payload.CustomAlias)
 	if err != nil {
+		if errors.Is(err, services.ErrInvalidAlias) ||
+			errors.Is(err, services.ErrReservedAlias) ||
+			errors.Is(err, services.ErrAliasExists) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+				"error": err.Error(),
+			})
+		}
+
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "could not create short link",
 		})

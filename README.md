@@ -31,6 +31,7 @@ Current features:
 - Security headers middleware
 - Optional private mode using `X-API-Key`
 - 6-character unique short codes
+- Optional custom aliases for short links
 - Basic CORS
 - Simple request logs
 - Responsive SaaS-style landing page
@@ -212,7 +213,8 @@ Request body:
 ```json
 {
   "original_url": "https://example.com",
-  "title": "Optional title"
+  "title": "Optional title",
+  "custom_alias": "spring_launch"
 }
 ```
 
@@ -221,6 +223,9 @@ Validation:
 - `original_url` is required.
 - `original_url` must start with `http://` or `https://`.
 - `original_url` must not point to localhost, private/internal IP ranges, single-label hosts, or blacklisted domains.
+- `custom_alias` is optional and must be 3-40 characters using only letters, numbers, hyphens, and underscores.
+- Reserved aliases are not allowed: `api`, `admin`, `dashboard`, `login`, `register`, `health`, `stats`.
+- Existing aliases return a clear validation error.
 - If `PRIVATE=true`, requests must include `X-API-Key`.
 
 ### `GET /:code`

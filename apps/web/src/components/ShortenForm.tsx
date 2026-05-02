@@ -4,6 +4,7 @@ import { createShortLink, type CreateLinkResponse } from "../api/links";
 export function ShortenForm() {
   const [url, setUrl] = useState("");
   const [title, setTitle] = useState("");
+  const [customAlias, setCustomAlias] = useState("");
   const [result, setResult] = useState<CreateLinkResponse | null>(null);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,7 +27,8 @@ export function ShortenForm() {
     try {
       const shortLink = await createShortLink({
         original_url: trimmedURL,
-        title: title.trim() || undefined
+        title: title.trim() || undefined,
+        custom_alias: customAlias.trim() || undefined
       });
 
       setResult(shortLink);
@@ -72,6 +74,22 @@ export function ShortenForm() {
             placeholder="Spring launch"
             value={title}
             onChange={(event) => setTitle(event.target.value)}
+            disabled={isSubmitting}
+          />
+        </div>
+
+        <div className="field-group">
+          <label htmlFor="custom-alias">Custom alias</label>
+          <input
+            id="custom-alias"
+            name="custom-alias"
+            type="text"
+            placeholder="spring_launch"
+            minLength={3}
+            maxLength={40}
+            pattern="[A-Za-z0-9_-]{3,40}"
+            value={customAlias}
+            onChange={(event) => setCustomAlias(event.target.value)}
             disabled={isSubmitting}
           />
         </div>
